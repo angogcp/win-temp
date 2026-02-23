@@ -13,6 +13,8 @@ import {
     ShieldAlert,
     ShieldCheck,
     Power,
+    PowerOff,
+    RotateCcw,
     AlertTriangle,
     XCircle,
     Flame,
@@ -145,6 +147,13 @@ export default function Dashboard() {
     const [localMbThreshold, setLocalMbThreshold] = useState(75);
     const [localShutdownDelay, setLocalShutdownDelay] = useState(60);
 
+    // Power control state
+    const [showPowerMenu, setShowPowerMenu] = useState(false);
+    const [powerConfirm, setPowerConfirm] = useState<'shutdown' | 'reboot' | null>(null);
+    const [powerDelay, setPowerDelay] = useState(10);
+    const [powerPending, setPowerPending] = useState(false);
+    const [powerMessage, setPowerMessage] = useState("");
+
     const fetchData = async () => {
         try {
             const res = await fetch("/api/system");
@@ -241,6 +250,32 @@ export default function Dashboard() {
         return `${value.toFixed(i > 1 ? 1 : 0)} ${units[Math.min(i, units.length - 1)]}`;
     };
 
+    const executePowerAction = async (action: 'shutdown' | 'reboot' | 'cancel') => {
+        try {
+            const res = await fetch('/api/power', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, delay: powerDelay }),
+            });
+            const result = await res.json();
+            if (result.success) {
+                setPowerMessage(result.message);
+                if (action !== 'cancel') {
+                    setPowerPending(true);
+                } else {
+                    setPowerPending(false);
+                }
+            } else {
+                setPowerMessage(result.message || result.error || 'Action failed');
+            }
+        } catch {
+            setPowerMessage('Failed to send power command');
+        }
+        setPowerConfirm(null);
+        // Clear message after 8s
+        setTimeout(() => setPowerMessage(""), 8000);
+    };
+
     useEffect(() => {
         fetchData();
         fetchThermalConfig();
@@ -310,6 +345,116 @@ export default function Dashboard() {
                         <p className="text-zinc-400 text-sm mt-1">Real-time Windows telemetrics & system health</p>
                     </div>
                     <div className="flex items-center space-x-3">
+                        {/* Power Control Button */}
+                        <div className="relative">
+                            <button
+                                onClick={() => { setShowPowerMenu(!showPowerMenu); setPowerConfirm(null); }}
+                                className={clsx(
+                                    "flex items-center space-x-2 py-2 px-4 rounded-full border text-sm font-medium tracking-wide transition-all duration-300 cursor-pointer",
+                                    powerPending
+                                        ? "bg-orange-500/10 border-orange-500/30 text-orange-400 hover:bg-orange-500/20 animate-pulse"
+                                        : "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10"
+                                )}
+                            >
+                                <Power className="w-4 h-4" />
+                                <span>{powerPending ? "PENDING" : "POWER"}</span>
+                            </button>
+
+                            {/* Power Dropdown */}
+                            {showPowerMenu && (
+                                <div className="absolute right-0 top-12 z-40 w-72 glass rounded-2xl p-4 border border-white/10 shadow-2xl animate-slideDown">
+                                    <p className="text-xs text-zinc-400 font-medium mb-3">Remote Power Control</p>
+
+                                    {/* Delay selector */}
+                                    <div className="flex items-center justify-between mb-4 bg-zinc-900/50 p-3 rounded-xl border border-white/5">
+                                        <span className="text-xs text-zinc-400">Delay</span>
+                                        <div className="flex items-center space-x-2">
+                                            {[0, 10, 30, 60].map((d) => (
+                                                <button
+                                                    key={d}
+                                                    onClick={() => setPowerDelay(d)}
+                                                    className={clsx(
+                                                        "px-2 py-1 rounded text-xs font-mono transition-all cursor-pointer",
+                                                        powerDelay === d
+                                                            ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                                            : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
+                                                    )}
+                                                >
+                                                    {d}s
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {!powerConfirm ? (
+                                        <div className="space-y-2">
+                                            <button
+                                                onClick={() => setPowerConfirm('reboot')}
+                                                className="w-full flex items-center space-x-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-all cursor-pointer"
+                                            >
+                                                <RotateCcw className="w-4 h-4" />
+                                                <span className="text-sm font-medium">Reboot</span>
+                                            </button>
+                                            <button
+                                                onClick={() => setPowerConfirm('shutdown')}
+                                                className="w-full flex items-center space-x-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20 transition-all cursor-pointer"
+                                            >
+                                                <PowerOff className="w-4 h-4" />
+                                                <span className="text-sm font-medium">Shutdown</span>
+                                            </button>
+                                            {powerPending && (
+                                                <button
+                                                    onClick={() => executePowerAction('cancel')}
+                                                    className="w-full flex items-center space-x-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20 transition-all cursor-pointer"
+                                                >
+                                                    <XCircle className="w-4 h-4" />
+                                                    <span className="text-sm font-medium">Cancel Pending</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center p-3">
+                                            <AlertTriangle className={clsx(
+                                                "w-8 h-8 mx-auto mb-2",
+                                                powerConfirm === 'shutdown' ? "text-red-400" : "text-amber-400"
+                                            )} />
+                                            <p className="text-sm text-zinc-200 mb-1">
+                                                Confirm <span className="font-bold">{powerConfirm}</span>?
+                                            </p>
+                                            <p className="text-xs text-zinc-500 mb-4">
+                                                {powerDelay > 0 ? `System will ${powerConfirm} in ${powerDelay}s` : `Immediate ${powerConfirm}`}
+                                            </p>
+                                            <div className="flex space-x-2">
+                                                <button
+                                                    onClick={() => setPowerConfirm(null)}
+                                                    className="flex-1 py-2 rounded-lg bg-zinc-700 text-zinc-300 text-sm hover:bg-zinc-600 transition-all cursor-pointer"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={() => executePowerAction(powerConfirm)}
+                                                    className={clsx(
+                                                        "flex-1 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer",
+                                                        powerConfirm === 'shutdown'
+                                                            ? "bg-red-600 text-white hover:bg-red-500"
+                                                            : "bg-amber-600 text-white hover:bg-amber-500"
+                                                    )}
+                                                >
+                                                    Confirm
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {powerMessage && (
+                                        <div className="mt-3 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                                            <p className="text-xs text-blue-300">{powerMessage}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
                         {/* Thermal Protection Toggle Button */}
                         <button
                             onClick={() => setShowThermalPanel(!showThermalPanel)}
