@@ -1,0 +1,1 @@
+(async () => { const si = require('systeminformation'); const t = await si.cpuTemperature(); console.log('systeminformation CPU temp result:', t);  const g = await si.graphics(); console.log('GPU:', g.controllers.map(c => c.temperatureGpu)); })()
