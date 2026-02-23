@@ -10,10 +10,11 @@ interface ThermalConfig {
     enabled: boolean;
     cpuThreshold: number;    // °C — shutdown if CPU temp exceeds this
     gpuThreshold: number;    // °C — shutdown if GPU temp exceeds this
+    mbThreshold: number;     // °C — shutdown if motherboard temp exceeds this
     shutdownDelay: number;   // seconds — grace period before shutdown
     triggered: boolean;      // whether a shutdown has been initiated
     triggeredAt: number | null;
-    triggeredBy: string | null;  // 'cpu' | 'gpu'
+    triggeredBy: string | null;  // 'cpu' | 'gpu' | 'mb'
     triggeredTemp: number | null;
 }
 
@@ -22,6 +23,7 @@ const defaultConfig: ThermalConfig = {
     enabled: false,
     cpuThreshold: 80,
     gpuThreshold: 85,
+    mbThreshold: 75,
     shutdownDelay: 60,
     triggered: false,
     triggeredAt: null,
@@ -47,7 +49,7 @@ function setConfig(partial: Partial<ThermalConfig>) {
  * Check temperatures against thresholds and trigger shutdown if needed.
  * This is called from the /api/system route on every poll.
  */
-export async function checkAndTriggerShutdown(cpuTemp: number | null, gpuTemp: number | null) {
+export async function checkAndTriggerShutdown(cpuTemp: number | null, gpuTemp: number | null, mbTemp: number | null = null) {
     const config = getConfig();
     if (!config.enabled || config.triggered) return;
 
@@ -63,8 +65,14 @@ export async function checkAndTriggerShutdown(cpuTemp: number | null, gpuTemp: n
 
     if (gpuTemp !== null && gpuTemp >= config.gpuThreshold) {
         shouldShutdown = true;
-        reason = reason ? 'cpu+gpu' : 'gpu';
+        reason = reason ? reason + '+gpu' : 'gpu';
         triggerTemp = gpuTemp;
+    }
+
+    if (mbTemp !== null && mbTemp >= config.mbThreshold) {
+        shouldShutdown = true;
+        reason = reason ? reason + '+mb' : 'mb';
+        triggerTemp = mbTemp;
     }
 
     if (shouldShutdown) {
@@ -113,6 +121,9 @@ export async function POST(request: Request) {
         }
         if (typeof body.gpuThreshold === 'number' && body.gpuThreshold >= 30 && body.gpuThreshold <= 120) {
             setConfig({ gpuThreshold: body.gpuThreshold });
+        }
+        if (typeof body.mbThreshold === 'number' && body.mbThreshold >= 30 && body.mbThreshold <= 120) {
+            setConfig({ mbThreshold: body.mbThreshold });
         }
         if (typeof body.shutdownDelay === 'number' && body.shutdownDelay >= 10 && body.shutdownDelay <= 300) {
             setConfig({ shutdownDelay: body.shutdownDelay });

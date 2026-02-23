@@ -52,6 +52,7 @@ interface SystemData {
         model: string;
         version: string;
         serial: string;
+        temperature: number | null;
     };
     graphics: {
         vendor: string;
@@ -110,6 +111,7 @@ interface ThermalConfig {
     enabled: boolean;
     cpuThreshold: number;
     gpuThreshold: number;
+    mbThreshold: number;
     shutdownDelay: number;
     triggered: boolean;
     triggeredAt: number | null;
@@ -127,6 +129,7 @@ export default function Dashboard() {
         enabled: false,
         cpuThreshold: 80,
         gpuThreshold: 85,
+        mbThreshold: 75,
         shutdownDelay: 60,
         triggered: false,
         triggeredAt: null,
@@ -139,6 +142,7 @@ export default function Dashboard() {
     // Local UI state for threshold sliders (so we don't spam the API on every slide)
     const [localCpuThreshold, setLocalCpuThreshold] = useState(80);
     const [localGpuThreshold, setLocalGpuThreshold] = useState(85);
+    const [localMbThreshold, setLocalMbThreshold] = useState(75);
     const [localShutdownDelay, setLocalShutdownDelay] = useState(60);
 
     const fetchData = async () => {
@@ -165,6 +169,7 @@ export default function Dashboard() {
                 if (!thermalSaving) {
                     setLocalCpuThreshold(config.cpuThreshold);
                     setLocalGpuThreshold(config.gpuThreshold);
+                    setLocalMbThreshold(config.mbThreshold);
                     setLocalShutdownDelay(config.shutdownDelay);
                 }
             }
@@ -213,6 +218,7 @@ export default function Dashboard() {
         saveThermalConfig({
             cpuThreshold: localCpuThreshold,
             gpuThreshold: localGpuThreshold,
+            mbThreshold: localMbThreshold,
             shutdownDelay: localShutdownDelay,
         });
     };
@@ -370,7 +376,7 @@ export default function Dashboard() {
                             "transition-opacity duration-300",
                             thermalConfig.enabled ? "opacity-100" : "opacity-40 pointer-events-none"
                         )}>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                 {/* CPU Threshold */}
                                 <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
                                     <div className="flex items-center justify-between mb-3">
@@ -439,6 +445,40 @@ export default function Dashboard() {
                                     )}
                                 </div>
 
+                                {/* MB Threshold */}
+                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-xs text-zinc-400 flex items-center font-medium">
+                                            <Activity className="w-3 h-3 mr-1.5 text-violet-400" /> MB Threshold
+                                        </p>
+                                        <span className={clsx(
+                                            "text-sm font-mono font-bold px-2 py-0.5 rounded",
+                                            data?.motherboard.temperature && data.motherboard.temperature >= localMbThreshold
+                                                ? "bg-red-500/20 text-red-400"
+                                                : "bg-violet-500/20 text-violet-400"
+                                        )}>
+                                            {localMbThreshold}°C
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="30"
+                                        max="100"
+                                        value={localMbThreshold}
+                                        onChange={(e) => setLocalMbThreshold(parseInt(e.target.value))}
+                                        className="thermal-slider w-full"
+                                    />
+                                    <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+                                        <span>30°C</span>
+                                        <span>100°C</span>
+                                    </div>
+                                    {data?.motherboard.temperature !== null && (
+                                        <p className="text-xs text-zinc-500 mt-2">
+                                            Current: <span className="text-zinc-300 font-mono">{data?.motherboard.temperature}°C</span>
+                                        </p>
+                                    )}
+                                </div>
+
                                 {/* Shutdown Delay */}
                                 <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5">
                                     <div className="flex items-center justify-between mb-3">
@@ -479,6 +519,7 @@ export default function Dashboard() {
                                             </span>
                                             {thermalConfig.cpuThreshold !== localCpuThreshold ||
                                                 thermalConfig.gpuThreshold !== localGpuThreshold ||
+                                                thermalConfig.mbThreshold !== localMbThreshold ||
                                                 thermalConfig.shutdownDelay !== localShutdownDelay ? (
                                                 <span className="text-amber-400 ml-2">• Unsaved changes</span>
                                             ) : null}
@@ -582,10 +623,28 @@ export default function Dashboard() {
                                     <p className="text-xs text-zinc-500 mb-1">Model</p>
                                     <p className="text-sm font-medium">{data.motherboard.model || 'Unknown'}</p>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-3 gap-4">
                                     <div className="bg-zinc-900/50 p-3 rounded-xl border border-white/5">
                                         <p className="text-xs text-zinc-500 mb-1">Version</p>
                                         <p className="text-sm font-medium">{data.motherboard.version || 'N/A'}</p>
+                                    </div>
+                                    <div className={clsx(
+                                        "bg-zinc-900/50 p-3 rounded-xl border",
+                                        thermalConfig.enabled && data.motherboard.temperature !== null && data.motherboard.temperature >= thermalConfig.mbThreshold
+                                            ? "border-red-500/50 bg-red-900/20"
+                                            : "border-white/5"
+                                    )}>
+                                        <p className="text-xs text-zinc-500 mb-1 flex items-center"><Thermometer className="w-3 h-3 mr-1" /> Temp</p>
+                                        <p className={clsx(
+                                            "text-lg font-semibold font-mono",
+                                            thermalConfig.enabled && data.motherboard.temperature !== null && data.motherboard.temperature >= (thermalConfig.mbThreshold * 0.9)
+                                                ? "text-red-400"
+                                                : data.motherboard.temperature !== null && data.motherboard.temperature >= 60
+                                                    ? "text-amber-400"
+                                                    : ""
+                                        )}>
+                                            {data.motherboard.temperature !== null ? `${data.motherboard.temperature}°C` : 'N/A'}
+                                        </p>
                                     </div>
                                     <div className="bg-zinc-900/50 p-3 rounded-xl border border-white/5">
                                         <p className="text-xs text-zinc-500 mb-1">Status</p>
@@ -914,6 +973,8 @@ export default function Dashboard() {
                                 {" · "}
                                 GPU shutdown at <span className="font-mono text-zinc-200">{thermalConfig.gpuThreshold}°C</span>
                                 {" · "}
+                                MB shutdown at <span className="font-mono text-zinc-200">{thermalConfig.mbThreshold}°C</span>
+                                {" · "}
                                 Grace period: <span className="font-mono text-zinc-200">{thermalConfig.shutdownDelay}s</span>
                             </p>
                         </div>
@@ -931,6 +992,13 @@ export default function Dashboard() {
                                     (data.graphics[0]?.temperature ?? 0) >= thermalConfig.gpuThreshold * 0.9 ? "text-red-400" :
                                         (data.graphics[0]?.temperature ?? 0) >= thermalConfig.gpuThreshold * 0.75 ? "text-amber-400" : "text-emerald-400"
                                 )}>{data.graphics[0]?.temperature}°C</span></span>
+                            )}
+                            {data.motherboard.temperature !== null && (
+                                <span>MB: <span className={clsx(
+                                    "font-mono",
+                                    data.motherboard.temperature >= thermalConfig.mbThreshold * 0.9 ? "text-red-400" :
+                                        data.motherboard.temperature >= thermalConfig.mbThreshold * 0.75 ? "text-amber-400" : "text-emerald-400"
+                                )}>{data.motherboard.temperature}°C</span></span>
                             )}
                         </div>
                     </div>

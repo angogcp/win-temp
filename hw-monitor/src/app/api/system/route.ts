@@ -134,12 +134,8 @@ export async function GET() {
         let resolvedCpuTemp = temp.main || temp.cores?.[0] || null;
         let resolvedGpuTemps = graphics.controllers.map(g => g.temperatureGpu || null);
 
-        // Step 2: If native failed, try DLL-based reading (most reliable)
-        let dllTemps = { cpu: null as number | null, gpu: null as number | null, mb: null as number | null };
-        if (resolvedCpuTemp === null || resolvedCpuTemp === 0 || resolvedCpuTemp === -1 ||
-            resolvedGpuTemps.every(t => t === null)) {
-            dllTemps = await readTempsViaDll();
-        }
+        // Step 2: Try DLL-based reading (most reliable, and only source for MB temp)
+        let dllTemps = await readTempsViaDll();
 
         // Step 3: If DLL also failed, try WMI as last resort
         if (!dllTemps.cpu && !dllTemps.gpu && (resolvedCpuTemp === null || resolvedGpuTemps.every(t => t === null))) {
@@ -179,6 +175,7 @@ export async function GET() {
                 model: baseboard.model,
                 version: baseboard.version,
                 serial: baseboard.serial,
+                temperature: dllTemps.mb,
             },
             graphics: graphics.controllers.map((g, i) => ({
                 vendor: g.vendor,
@@ -235,7 +232,8 @@ export async function GET() {
 
         // Check thermal shutdown thresholds on every poll
         const finalGpuTemp = data.graphics[0]?.temperature ?? null;
-        checkAndTriggerShutdown(resolvedCpuTemp, finalGpuTemp).catch(() => { });
+        const finalMbTemp = data.motherboard.temperature ?? null;
+        checkAndTriggerShutdown(resolvedCpuTemp, finalGpuTemp, finalMbTemp).catch(() => { });
 
         return NextResponse.json(data);
     } catch (error) {
